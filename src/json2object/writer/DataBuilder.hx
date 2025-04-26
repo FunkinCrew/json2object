@@ -126,13 +126,32 @@ class DataBuilder {
 		}
 
 		return macro {
+			order = order ?? [];
+
 			var indent = buildIndent(space, level);
 			var firstIndent = (indentFirst) ? indent : '';
 			if (o == null) { return firstIndent + "null"; }
 			var valueWriter = new $clsValue(ignoreNullOptionals);
 
 			@:privateAccess {
-				var values =  [for (key in o.keys()) indent + space + '"'+key+'": '+valueWriter._write(o.get(key), space, level + 1, false, onAllOptionalNull)];
+				var values =  [
+					for (key in order) 
+						if (o.exists(key)) 
+							indent + space + '"'+key+'": '+valueWriter._write(o.get(key), space, level + 1, false, onAllOptionalNull)
+				];
+
+				var remainingKeys = [
+					for (key in o.keys()) 
+						if (!order.contains(key)) 
+							key
+				];
+				remainingKeys.sort(Reflect.compare);
+
+				values = values.concat([
+					for (key in remainingKeys) 
+						indent + space + '"'+key+'": '+valueWriter._write(o.get(key), space, level + 1, false, onAllOptionalNull)
+				]);
+
 				var newLine = (space != '' && values.length > 0) ? '\n' : '';
 
 				var json = firstIndent+'{' + newLine;
@@ -176,7 +195,8 @@ class DataBuilder {
 		}
 
 		var assignations:Array<Expr> = [];
-		var skips: Array<Expr> = [];
+		var nullSkips: Array<Expr> = [];
+		var defaultSkips: Array<Expr> = [];
 
 		for (field in fields) {
 			if (field.meta.has(":jignored")) { continue; }
@@ -218,6 +238,9 @@ class DataBuilder {
 					} else if (field.meta.has(":noquoting")) {
 						assignation = macro $assignation
 							+ new $f_cls(ignoreNullOptionals).dontQuote()._write(cast $f_a, space, level + 1, false, onAllOptionalNull);
+					} else if (field.meta.has(":order")) {
+						var order = field.meta.extract(":order")[0].params[0];
+						assignation = macro $assignation + new $f_cls(ignoreNullOptionals)._write(cast $f_a, space, level + 1, false, onAllOptionalNull, $order);
 					} else {
 						assignation = macro $assignation + new $f_cls(ignoreNullOptionals)._write(cast $f_a, space, level + 1, false, onAllOptionalNull);
 					}
@@ -228,23 +251,30 @@ class DataBuilder {
 							case TAbstract(t, params):
 								if (t.toString() == "Null") {
 									// Null<Bool>
-									skips.push(macro $f_a == null);
+									nullSkips.push(macro $f_a == null);
 								} else {
 									// Bool
-									skips.push(macro false);
+									nullSkips.push(macro false);
 								}
 							default:
-								skips.push(macro $f_a == null);
+								nullSkips.push(macro $f_a == null);
 						}
 					} else {
-						skips.push(macro false);
+						nullSkips.push(macro false);
+					}
+
+					if (field.meta.has(":default")) {
+						defaultSkips.push(macro $f_a == ${field.meta.extract(":default")[0].params[0]});
+					} else {
+						defaultSkips.push(macro false);
 					}
 
 				default:
 			}
 		}
 		var array = {expr:EArrayDecl(assignations), pos:Context.currentPos()};
-		var skips = {expr:EArrayDecl(skips), pos:Context.currentPos()};
+		var nullSkips = {expr:EArrayDecl(nullSkips), pos:Context.currentPos()};
+		var defaultSkips = {expr:EArrayDecl(defaultSkips), pos:Context.currentPos()};
 
 		return macro {
 			var indent = buildIndent(space, level);
@@ -252,14 +282,17 @@ class DataBuilder {
 			if (o == null) { return firstIndent + "null"; }
 			@:privateAccess{
 				var decl = ${array};
+				var defaultSkips = ${defaultSkips};
 				if (ignoreNullOptionals) {
-					var skips = ${skips};
-					if (skips.indexOf(false) == -1) {
+					var nullSkips = ${nullSkips};
+					if (nullSkips.indexOf(false) == -1) {
 						decl = onAllOptionalNull != null ? [onAllOptionalNull()] : [];
 					}
 					else {
-						decl = [ for (i in 0...decl.length) skips[i] ? continue : decl[i]];
+						decl = [ for (i in 0...decl.length) (nullSkips[i] || defaultSkips[i]) ? continue : decl[i]];
 					}
+				} else {
+					decl = [ for (i in 0...decl.length) (defaultSkips[i]) ? continue : decl[i]];
 				}
 				var newLine = (space != '' && decl.length > 0) ? '\n' : '';
 
@@ -428,6 +461,9 @@ class DataBuilder {
 			}
 		};
 
+		var isMapWriter:Bool = false;
+		var mapKey:Null<ComplexType> = null;
+
 		var writeExpr = switch (type) {
 			case TInst(_.get()=>t, p) :
 				switch(t.module) {
@@ -474,6 +510,8 @@ class DataBuilder {
 					}
 				}
 				else if (t.module == #if (haxe_ver >= 4) "haxe.ds.Map" #else "Map" #end) {
+					isMapWriter = true;
+					mapKey = p[0].toComplexType();
 					makeMapWriter(p[0], p[1], c);
 				}
 				else {
@@ -507,6 +545,8 @@ class DataBuilder {
 			{name:"indentFirst", meta:null, opt:false, type:Context.getType("Bool").toComplexType(), value:macro false},
 			{name:"onAllOptionalNull", meta:null, opt:true, type:onAllOptionalNullCT, value: macro null}
 		];
+		if(isMapWriter)
+			args.push({name:"order", meta:null, opt:true, type:(macro: Array<$mapKey>), value:macro null});
 		var privateWrite:Field = {
 			doc: null,
 			kind: FFun({args:args, expr:writeExpr, params:null, ret:null}),
