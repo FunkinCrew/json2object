@@ -135,20 +135,20 @@ class DataBuilder {
 
 			@:privateAccess {
 				var values =  [
-					for (key in order) 
-						if (o.exists(key)) 
+					for (key in order)
+						if (o.exists(key))
 							indent + space + '"'+key+'": '+valueWriter._write(o.get(key), space, level + 1, false, onAllOptionalNull)
 				];
 
 				var remainingKeys = [
-					for (key in o.keys()) 
-						if (!order.contains(key)) 
+					for (key in o.keys())
+						if (!order.contains(key))
 							key
 				];
 				remainingKeys.sort(Reflect.compare);
 
 				values = values.concat([
-					for (key in remainingKeys) 
+					for (key in remainingKeys)
 						indent + space + '"'+key+'": '+valueWriter._write(o.get(key), space, level + 1, false, onAllOptionalNull)
 				]);
 
@@ -264,8 +264,22 @@ class DataBuilder {
 					}
 
 					if (field.meta.has(":default")) {
-						defaultSkips.push(macro $f_a == ${field.meta.extract(":default")[0].params[0]});
+						// Get the value of the @:default annotation.
+						var f_default:Expr = macro ${field.meta.extract(":default")[0].params[0]};
+
+						switch (f_default.expr) {
+							case ECall(e, params):
+								// You cannot directly compare enums with arguments.
+								// Here, we don't skip the value, and assume @:jcustomparse will handle converting to a primative.
+								defaultSkips.push(macro false);
+							default:
+								// Compare the default value with the value of the field.
+								// If the values are the same, skip the value.
+								var f_shouldskip:Expr = macro $f_a == $f_default;
+								defaultSkips.push(f_shouldskip);
+						}
 					} else {
+						// Never skip if there is no @:default annotation.
 						defaultSkips.push(macro false);
 					}
 
