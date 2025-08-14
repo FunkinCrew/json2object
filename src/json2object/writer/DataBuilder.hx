@@ -272,6 +272,18 @@ class DataBuilder {
 								// You cannot directly compare enums with arguments.
 								// Here, we don't skip the value, and assume @:jcustomparse will handle converting to a primative.
 								defaultSkips.push(macro false);
+							case EArrayDecl(values):
+								var f_shouldskip:Expr = macro $f_a.length == $f_default.length ? {
+									var skip:Bool = true; 
+									for (i in 0...$f_a.length) {
+										if ($f_a[i] != $f_default[i]) {
+											skip = false;
+											break;
+										}
+									}
+									skip;
+								} : false;
+								defaultSkips.push(f_shouldskip);
 							default:
 								// Compare the default value with the value of the field.
 								// If the values are the same, skip the value.
