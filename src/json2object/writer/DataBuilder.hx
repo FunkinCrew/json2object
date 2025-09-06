@@ -273,17 +273,33 @@ class DataBuilder {
 								// Here, we don't skip the value, and assume @:jcustomparse will handle converting to a primative.
 								defaultSkips.push(macro false);
 							case EArrayDecl(values):
-								var f_shouldskip:Expr = macro $f_a.length == $f_default.length ? {
-									var skip:Bool = true; 
-									for (i in 0...$f_a.length) {
-										if ($f_a[i] != $f_default[i]) {
-											skip = false;
-											break;
+								if (field.type.isMap()) {
+									var f_shouldskip:Expr = values.length == 0 ? macro !$f_a.keys().hasNext() : macro {
+										var defaultMap = $f_default; // store in local variable to avoid multiple evaluation
+										var skip:Bool = true; 
+										for (k in $f_a.keys()) {
+											if (!defaultMap.exists(k) || $f_a.get(k) != defaultMap.get(k)) {
+												skip = false;
+												break;
+											}
 										}
+										skip;
 									}
-									skip;
-								} : false;
-								defaultSkips.push(f_shouldskip);
+									defaultSkips.push(f_shouldskip);
+								} else {
+									var f_shouldskip:Expr = macro $f_a.length == $f_default.length ? {
+										var defaultArray = $f_default; // store in local variable to avoid multiple evaluation
+										var skip:Bool = true; 
+										for (i in 0...$f_a.length) {
+											if ($f_a[i] != defaultArray[i]) {
+												skip = false;
+												break;
+											}
+										}
+										skip;
+									} : false;
+									defaultSkips.push(f_shouldskip);
+								}
 							default:
 								// Compare the default value with the value of the field.
 								// If the values are the same, skip the value.
