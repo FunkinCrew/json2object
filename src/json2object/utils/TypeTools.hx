@@ -38,6 +38,24 @@ class TypeTools {
 
 	#if macro
 
+	public static function isMap(type:Type):Bool {
+		var t = follow(type);
+		switch (t) {
+			case TAbstract(_.get() => a, [keyType, valueType]):
+				if (a.pack.join(".") == "haxe.ds" && a.name == "Map") return true;
+				else return false;
+			
+			case TInst(_.get() => c, [keyType, valueType]):
+				for (i in c.interfaces)
+					if (i.t.get().pack.join(".") == "haxe" && i.t.get().name == "IMap") return true;
+				return false;
+
+			default:
+				return false;
+		}
+	}
+
+
 	public static inline function toComplexType(type:Null<Type>):Null<ComplexType> {
 		return {
 			inline function direct()
