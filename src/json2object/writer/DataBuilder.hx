@@ -80,12 +80,21 @@ class DataBuilder {
 			var valueWriter = new $cls(ignoreNullOptionals);
 
 			@:privateAccess {
-				var values =  [for (element in o) valueWriter._write(element, space, level + 1, true, onAllOptionalNull)];
-				var newLine = (space != '' && o.length > 0) ? '\n' : '';
+				var hasDynamic:Bool = false;
+				for (e in o)
+				{
+					if (Type.typeof(e) == TObject)
+					{
+						hasDynamic = true;
+						break;
+					}
+				}
 
+				var values =  [for (element in o) valueWriter._write(element, hasDynamic ? space : '', level + 1, true, onAllOptionalNull)];
+				var newLine = (space != '' && o.length > 0 && hasDynamic) ? '\n' : '';
 				var json = firstIndent + "[" + newLine;
-				json += values.join(',' + newLine) + newLine;
-				json += indent + "]";
+				json += values.join(',' + (!hasDynamic ? ' ' : newLine)) + newLine;
+				json += (hasDynamic ? indent : '') + "]";
 				return json;
 			}
 		};
