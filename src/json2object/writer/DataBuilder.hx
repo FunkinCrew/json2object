@@ -83,10 +83,14 @@ class DataBuilder {
 				var hasDynamic:Bool = false;
 				for (e in o)
 				{
-					if (Type.typeof(e) == TObject)
+					switch (Type.typeof(e))
 					{
-						hasDynamic = true;
-						break;
+						case TObject | TClass(_) | TEnum(_):
+						{
+							hasDynamic = true;
+							break;
+						}
+						case _:
 					}
 				}
 
