@@ -494,6 +494,8 @@ class DataBuilder {
 				return makeWriter(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeWriter(c, f(), f());
+			case TDynamic(_):
+				makeBasicWriter(base);
 			default: Context.fatalError("json2object: Writer for "+type.toString()+" are not generated", Context.currentPos());
 		}
 

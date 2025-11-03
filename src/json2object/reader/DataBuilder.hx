@@ -136,6 +136,16 @@ class DataBuilder {
 		}
 	}
 
+	public static function makeDynamicParser(parser:TypeDefinition, baseParser:BaseType) {
+		makeArrayParser(parser, TDynamic(null), baseParser);
+		makeObjectOrAnonParser(parser, TDynamic(null), null, baseParser);
+
+		changeFunction("loadJsonNull", parser, macro {value = null;});
+		changeFunction("loadJsonString", parser, macro {value = s;});
+		changeFunction("loadJsonNumber", parser, macro {value = f;});
+		changeFunction("loadJsonBool", parser, macro {value = b;});
+	}
+
 	public static function makeArrayParser(parser:TypeDefinition, subType:Type, baseParser:BaseType) {
 		var cls = { name:baseParser.name, pack:baseParser.pack, params:[TPType(subType.toComplexType())]};
 
@@ -1068,6 +1078,8 @@ class DataBuilder {
 				return makeParser(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeParser(c, f());
+			case TDynamic(_):
+				makeDynamicParser(parser, c);
 			default: Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
 		}
 
