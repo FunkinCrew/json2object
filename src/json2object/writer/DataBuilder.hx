@@ -71,6 +71,65 @@ class DataBuilder {
 			: macro return ((indentFirst) ? buildIndent(space, level) : '') + o;
 	}
 
+	private static function makeDynamicWriter () : Expr {
+		return macro {
+			var writeObject = null, writeValue = null;
+
+			writeObject = (obj:Dynamic, indentFirst:Bool, space:String, level:Int) -> {
+				var indent:String = buildIndent(space, level);
+				var firstIndent:String = indentFirst ? indent : '';
+
+				if (obj == null) return firstIndent + "null";
+
+				var fields:Array<String> = Reflect.fields(obj);
+				fields.sort(Reflect.compare);
+
+				var values:Array<String> = [for (field in fields) {
+					indent + space + quote(field) + ': ' + writeValue(Reflect.field(obj, field), false, space, level + 1);
+				}];
+
+				var newLine = (space != '' && values.length > 0) ? '\n' : '';
+
+				var json = firstIndent + "{" + newLine;
+				json += values.join(',' + newLine) + newLine;
+				json += indent + "}";
+				return json;
+			};
+
+			writeValue = (value:Dynamic, indentFirst:Bool, space:String, level:Int) -> {
+				var indent:String = buildIndent(space, level);
+				var firstIndent:String = (indentFirst) ? indent : '';
+
+				if (value == null) return firstIndent + "null";
+
+				if (Std.isOfType(value, String))
+				{
+					return firstIndent + quote(value);
+				}
+				else if (Std.isOfType(value, Array))
+				{
+					var arr:Array<Dynamic> = cast value;
+					var hasDynamic:Bool = arr.map(v -> Reflect.isObject(v)).contains(true);
+
+					var values:Array<String> = [for (element in arr) writeValue(element, hasDynamic, space, level + 1)];
+					var newLine:String = (space != '' && o.length > 0 && hasDynamic) ? '\n' : '';
+					var json:String = firstIndent + "[" + newLine;
+					json += values.join(',' + (!hasDynamic ? ' ' : newLine)) + newLine;
+					json += (hasDynamic ? indent : '') + "]";
+					return json;
+				}
+				else if (Reflect.isObject(value))
+				{
+					return writeObject(value, indentFirst, space, level);
+				}
+
+				return firstIndent + Std.string(value);
+			};
+
+			return writeValue(o, indentFirst, space, level);
+		};
+	}
+
 	private static function makeArrayWriter (subType:Type, baseParser:BaseType) : Expr {
 		var cls = { name:baseParser.name, pack:baseParser.pack, params:[TPType(subType.toComplexType())]};
 		return macro {
@@ -276,7 +335,7 @@ class DataBuilder {
 								if (field.type.isMap()) {
 									var f_shouldskip:Expr = values.length == 0 ? macro !$f_a.keys().hasNext() : macro {
 										var defaultMap = $f_default; // store in local variable to avoid multiple evaluation
-										var skip:Bool = true; 
+										var skip:Bool = true;
 										for (k in $f_a.keys()) {
 											if (!defaultMap.exists(k) || $f_a.get(k) != defaultMap.get(k)) {
 												skip = false;
@@ -289,7 +348,7 @@ class DataBuilder {
 								} else {
 									var f_shouldskip:Expr = macro $f_a.length == $f_default.length ? {
 										var defaultArray = $f_default; // store in local variable to avoid multiple evaluation
-										var skip:Bool = true; 
+										var skip:Bool = true;
 										for (i in 0...$f_a.length) {
 											if ($f_a[i] != defaultArray[i]) {
 												skip = false;
@@ -575,7 +634,7 @@ class DataBuilder {
 			case TLazy(f):
 				return makeWriter(c, f(), f());
 			case TDynamic(_):
-				makeBasicWriter(base);
+				makeDynamicWriter();
 			default: Context.fatalError("json2object: Writer for "+type.toString()+" are not generated", Context.currentPos());
 		}
 

@@ -136,13 +136,24 @@ class DataBuilder {
 		}
 	}
 
-	public static function makeDynamicParser(parser:TypeDefinition, baseParser:BaseType) {
-		makeArrayParser(parser, TDynamic(null), baseParser);
-		makeObjectOrAnonParser(parser, TDynamic(null), null, baseParser);
+	public static function makeDynamicParser(parser:TypeDefinition, type:Type, baseParser:BaseType) {
+		var complex = type.toComplexType();
+		var cls = { name:baseParser.name, pack:baseParser.pack, params:[TPType(complex)]};
+
+		makeArrayParser(parser, type, baseParser);
+
+		changeFunction("loadJsonObject", parser, macro {
+			var parser = new $cls(errors, putils, THROW, ignoreUnknownVariables);
+			var struct:haxe.DynamicAccess<$complex> = {};
+
+			for (f in o) struct.set(f.name, parser.loadJson(f.value, f.name));
+
+			value = struct;
+		});
 
 		changeFunction("loadJsonNull", parser, macro {value = null;});
 		changeFunction("loadJsonString", parser, macro {value = s;});
-		changeFunction("loadJsonNumber", parser, macro {value = f;});
+		changeFunction("loadJsonNumber", parser, macro {value = f.indexOf('.') >= 0 ? Std.parseFloat(f) : Std.parseInt(f);});
 		changeFunction("loadJsonBool", parser, macro {value = b;});
 	}
 
@@ -1079,7 +1090,7 @@ class DataBuilder {
 			case TLazy(f):
 				return makeParser(c, f());
 			case TDynamic(_):
-				makeDynamicParser(parser, c);
+				makeDynamicParser(parser, type, c);
 			default: Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
 		}
 
