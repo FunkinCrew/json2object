@@ -27,6 +27,7 @@ import json2object.Error;
 import json2object.Error.ErrorType;
 import json2object.Position;
 import json2object.PositionUtils;
+import json2object.JsonParserParams;
 
 using StringTools;
 
@@ -41,13 +42,20 @@ class BaseParser<T> {
 
 	private var putils:PositionUtils;
 
-	public var ignoreUnknownVariables:Bool = false;
+	public var ignoreUnknownVariables:Bool;
 
-	private function new(errors:Array<Error>, putils:PositionUtils, errorType:ErrorType, ?ignoreUnknownVariables:Bool = false) {
+	private function new(errors:Array<Error>, putils:PositionUtils, errorType:ErrorType, ?params:JsonParserParams) {
 		this.errors = errors;
 		this.putils = putils;
 		this.errorType = errorType;
-		this.ignoreUnknownVariables = ignoreUnknownVariables;
+
+		this.ignoreUnknownVariables = params?.ignoreUnknownVariables ?? false;
+	}
+
+	private inline function getParams():JsonParserParams {
+		return {
+			ignoreUnknownVariables: ignoreUnknownVariables,
+		};
 	}
 
 	public function fromJson(jsonString:String, filename:String="") : T {

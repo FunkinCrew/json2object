@@ -27,7 +27,6 @@ class DataBuilder {}
 import haxe.macro.Expr;
 import haxe.macro.Context;
 import haxe.macro.Type;
-import haxe.macro.TypeTools;
 import json2object.Error;
 
 using StringTools;
@@ -136,7 +135,7 @@ class DataBuilder {
 			var indent = buildIndent(space, level);
 			var firstIndent = (indentFirst) ? indent : '';
 			if (o == null) { return firstIndent + "null"; }
-			var valueWriter = new $cls(ignoreNullOptionals);
+			var valueWriter = new $cls(getParams());
 
 			@:privateAccess {
 				var hasDynamic:Bool = false;
@@ -190,7 +189,7 @@ class DataBuilder {
 			var indent = buildIndent(space, level);
 			var firstIndent = (indentFirst) ? indent : '';
 			if (o == null) { return firstIndent + "null"; }
-			var valueWriter = new $clsValue(ignoreNullOptionals);
+			var valueWriter = new $clsValue(getParams());
 
 			@:privateAccess {
 				var values =  [
@@ -296,12 +295,12 @@ class DataBuilder {
 						assignation = macro $assignation + $writer(cast $f_a);
 					} else if (field.meta.has(":noquoting")) {
 						assignation = macro $assignation
-							+ new $f_cls(ignoreNullOptionals).dontQuote()._write(cast $f_a, space, level + 1, false, onAllOptionalNull);
+							+ new $f_cls(getParams()).dontQuote()._write(cast $f_a, space, level + 1, false, onAllOptionalNull);
 					} else if (field.meta.has(":order")) {
 						var order = field.meta.extract(":order")[0].params[0];
-						assignation = macro $assignation + new $f_cls(ignoreNullOptionals)._write(cast $f_a, space, level + 1, false, onAllOptionalNull, $order);
+						assignation = macro $assignation + new $f_cls(getParams())._write(cast $f_a, space, level + 1, false, onAllOptionalNull, $order);
 					} else {
-						assignation = macro $assignation + new $f_cls(ignoreNullOptionals)._write(cast $f_a, space, level + 1, false, onAllOptionalNull);
+						assignation = macro $assignation + new $f_cls(getParams())._write(cast $f_a, space, level + 1, false, onAllOptionalNull);
 					}
 					assignations.push(assignation);
 
@@ -331,7 +330,7 @@ class DataBuilder {
 								// You cannot directly compare enums with arguments.
 								// Here, we don't skip the value, and assume @:jcustomparse will handle converting to a primative.
 								defaultSkips.push(macro false);
-							case EArrayDecl(values):
+								case EArrayDecl(values):
 								if (field.type.isMap()) {
 									var f_shouldskip:Expr = values.length == 0 ? macro !$f_a.keys().hasNext() : macro {
 										var defaultMap = $f_default; // store in local variable to avoid multiple evaluation
@@ -384,17 +383,14 @@ class DataBuilder {
 			@:privateAccess{
 				var decl = ${array};
 				var defaultSkips = ${defaultSkips};
-				if (ignoreNullOptionals) {
-					var nullSkips = ${nullSkips};
-					if (nullSkips.indexOf(false) == -1) {
-						decl = onAllOptionalNull != null ? [onAllOptionalNull()] : [];
-					}
-					else {
-						decl = [ for (i in 0...decl.length) (nullSkips[i] || defaultSkips[i]) ? continue : decl[i]];
-					}
-				} else {
-					decl = [ for (i in 0...decl.length) (defaultSkips[i]) ? continue : decl[i]];
-				}
+				var nullSkips = ${nullSkips};
+
+				decl = [ for (i in 0...decl.length) {
+					if (ignoreNullOptionals && nullSkips[i]) continue;
+					if (ignoreDefaults && defaultSkips[i]) continue;
+					decl[i];
+				}];
+
 				var newLine = (space != '' && decl.length > 0) ? '\n' : '';
 
 				var json = firstIndent + "{" + newLine;
@@ -428,7 +424,7 @@ class DataBuilder {
 								var a_type = a.t.applyTypeParameters(tParams, params);
 								var a_cls = {name:baseParser.name, pack:baseParser.pack, params:[TPType(a_type.toComplexType())]};
 
-								assignations.push(macro indent + space + space + '"'+$v{a.name} +'": '+ new $a_cls(ignoreNullOptionals)._write($i{a.name}, space, level + 2, false, onAllOptionalNull));
+								assignations.push(macro indent + space + space + '"'+$v{a.name} +'": '+ new $a_cls(getParams())._write($i{a.name}, space, level + 2, false, onAllOptionalNull));
 							}
 
 
@@ -537,12 +533,34 @@ class DataBuilder {
 
 		var writerName = c.name + "_" + (counter++);
 		var writerClass = macro class $writerName {
-			public var ignoreNullOptionals : Bool;
+			//
+			// Public parameters for the writer
+			//
+
+			/**
+			 * If `true`, fields marked with `@:optional` will not be written if the value is null.
+			 */
+			public var ignoreNullOptionals:Bool;
+
+			/**
+			 * If `true`, fields marked with `@:default` will not be written if the value matches.
+			 */
+			public var ignoreDefaults:Bool;
+
+			// Track whether to put quotation marks around the next value.
 			private var shouldQuote : Bool = true;
-			public function new (?ignoreNullOptionals:Bool=false) {
-				this.ignoreNullOptionals = ignoreNullOptionals;
+
+			public function new (?params:json2object.JsonWriterParams) {
+				this.ignoreNullOptionals = params?.ignoreNullOptionals ?? false;
+				this.ignoreDefaults = params?.ignoreDefaults ?? false;
 			}
 
+			private inline function getParams():json2object.JsonWriterParams {
+				return {
+					ignoreNullOptionals: ignoreNullOptionals,
+					ignoreDefaults: ignoreDefaults,
+				};
+			}
 
 			private inline function quote (str:String) {
 				return shouldQuote ? json2object.writer.StringUtils.quote(str) : str;

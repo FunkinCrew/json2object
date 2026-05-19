@@ -22,5 +22,5 @@ SOFTWARE.
 package json2object;
 
 @:genericBuild(json2object.reader.DataBuilder.build())
-class JsonParser<T> { 
+class JsonParser<T> {
 }
